@@ -97,7 +97,12 @@ int main()
                 // ==============================
 
                 auto analysisManager = G4AnalysisManager::Instance();
+
+                // CRITICAL: reset clears histograms/ntuples from previous run
+                // without this it crashes on run 2
+                analysisManager->Reset();
                 analysisManager->SetDefaultFileType("root");
+                analysisManager->SetVerboseLevel(0);
 
                 analysisManager->CreateH1(
                     "ScatteringAngle_Full",
@@ -123,6 +128,7 @@ int main()
                 // ==============================
 
                 auto runManager = new G4RunManager();
+                runManager->SetVerboseLevel(0); // suppress per-run Geant4 spam
 
                 runManager->SetUserInitialization(
                     new DetectorConstruction(targetThickness));
@@ -165,6 +171,7 @@ int main()
                        << targetThickness / mm << ","
                        << largeAngleProb << ","
                        << outputFile << "\n";
+                csvLog.flush(); // write immediately — if batch crashes, progress is saved
 
                 delete runManager;
                 runID++;
