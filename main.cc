@@ -37,21 +37,26 @@ int main()
 
     // ==============================
     // Create RunManager ONCE outside loop
-    // Geant4 singletons segfault if deleted/recreated
     // ==============================
 
     auto runManager = new G4RunManager();
     runManager->SetVerboseLevel(0);
 
-    // Keep raw pointers so we can update them between runs
-    auto detector       = new DetectorConstruction(0.1 * X0_Al);
+    // Step 1: set detector
+    auto detector = new DetectorConstruction(0.1 * X0_Al);
+    runManager->SetUserInitialization(detector);
+
+    // Step 2: set physics — MUST happen before constructing any user action
+    runManager->SetUserInitialization(new PhysicsList());
+
+    // Step 3: construct actions AFTER physics is registered (Geant4-11 requirement)
     auto primaryGen     = new PrimaryGenerator("e-", 100 * MeV);
     auto steppingAction = new SteppingAction(thresholdRad, 0);
 
-    runManager->SetUserInitialization(detector);
-    runManager->SetUserInitialization(new PhysicsList());
     runManager->SetUserAction(primaryGen);
     runManager->SetUserAction(steppingAction);
+
+    // Step 4: initialize
     runManager->Initialize();
 
     // ==============================
@@ -89,6 +94,7 @@ int main()
                 // Update geometry and reinitialise
                 detector->thickness = targetThickness;
                 runManager->ReinitializeGeometry();
+                runManager->PhysicsHasBeenModified();
 
                 // Update particle gun
                 primaryGen->SetParticle(particle, energyMeV * MeV);
@@ -96,9 +102,9 @@ int main()
                 // Reset stepping action counters
                 steppingAction->Reset(runID);
 
-                // Analysis manager reset
+                // Analysis manager: clear previous run's histos/ntuples
                 auto am = G4AnalysisManager::Instance();
-                am->Reset();
+                am->Clear();
                 am->SetDefaultFileType("root");
                 am->SetVerboseLevel(0);
 
