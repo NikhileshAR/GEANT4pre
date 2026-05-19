@@ -19,45 +19,46 @@ using namespace CLHEP;
 
 int main()
 {
-    // ==============================
-    // Parameter Grid
-    // ==============================
-
     std::vector<std::string> particles = {"e-", "mu-"};
+    std::vector<G4double>    energies  = {100, 200, 500, 1000, 2000, 5000};
+    std::vector<G4double>    thicknessFractions = {0.01, 0.05, 0.1, 0.2, 0.35, 0.5};
 
-    // Energies in MeV
-    std::vector<G4double> energies = {100, 200, 500, 1000, 2000, 5000};
-
-    // Target thickness as fraction of X0
-    std::vector<G4double> thicknessFractions = {0.01, 0.05, 0.1, 0.2, 0.35, 0.5};
-
-    // Events per run
-    G4int nEvents = 10000;
-
-    // Large angle threshold (degrees) — fixed for all runs
+    G4int    nEvents      = 10000;
     G4double thresholdDeg = 5.0;
+    G4double thresholdRad = thresholdDeg * deg;
 
-    // ==============================
-    // Material radiation lengths
-    // ==============================
-
-    auto nist = G4NistManager::Instance();
-    auto alMat = nist->FindOrBuildMaterial("G4_Al");
-    G4double X0_Al = alMat->GetRadlen();
-
-    // ==============================
-    // CSV log of all runs
-    // ==============================
+    G4double X0_Al = G4NistManager::Instance()
+                         ->FindOrBuildMaterial("G4_Al")
+                         ->GetRadlen();
 
     std::ofstream csvLog("params.csv");
     csvLog << "run_id,particle,energy_MeV,thickness_X0,thickness_mm,"
            << "large_angle_prob,output_file\n";
 
-    int runID = 0;
+    // ==============================
+    // Create RunManager ONCE outside loop
+    // Geant4 singletons segfault if deleted/recreated
+    // ==============================
+
+    auto runManager = new G4RunManager();
+    runManager->SetVerboseLevel(0);
+
+    // Keep raw pointers so we can update them between runs
+    auto detector       = new DetectorConstruction(0.1 * X0_Al);
+    auto primaryGen     = new PrimaryGenerator("e-", 100 * MeV);
+    auto steppingAction = new SteppingAction(thresholdRad, 0);
+
+    runManager->SetUserInitialization(detector);
+    runManager->SetUserInitialization(new PhysicsList());
+    runManager->SetUserAction(primaryGen);
+    runManager->SetUserAction(steppingAction);
+    runManager->Initialize();
 
     // ==============================
     // Batch loop
     // ==============================
+
+    int runID = 0;
 
     for (const auto& particle : particles)
     {
@@ -67,123 +68,83 @@ int main()
             {
                 G4double targetThickness = tFrac * X0_Al;
 
-                // Build output filename: e.g. output_em_100MeV_010X0.root
-                // tFrac * 100 as integer for clean filename
                 int tPercent = static_cast<int>(tFrac * 100);
                 int eMeV     = static_cast<int>(energyMeV);
-
-                // particle tag: e- -> em, mu- -> mu
                 std::string ptag = (particle == "e-") ? "em" : "mu";
 
                 std::ostringstream fname;
-                fname << "output_"
-                      << ptag << "_"
+                fname << "output_" << ptag << "_"
                       << eMeV << "MeV_"
-                      << tPercent << "X0"
-                      << ".root";
-
+                      << tPercent << "X0.root";
                 std::string outputFile = fname.str();
 
                 std::cout << "\n========================================\n";
                 std::cout << "RUN " << runID
                           << " | particle=" << particle
-                          << " | energy=" << energyMeV << " MeV"
-                          << " | thickness=" << tFrac << " X0"
-                          << " | output=" << outputFile << "\n";
+                          << " | energy="   << energyMeV << " MeV"
+                          << " | thickness=" << tFrac    << " X0"
+                          << " | output="   << outputFile << "\n";
                 std::cout << "========================================\n";
 
-                // ==============================
-                // Analysis Manager setup
-                // ==============================
+                // Update geometry and reinitialise
+                detector->thickness = targetThickness;
+                runManager->ReinitializeGeometry();
 
-                auto analysisManager = G4AnalysisManager::Instance();
+                // Update particle gun
+                primaryGen->SetParticle(particle, energyMeV * MeV);
 
-                // CRITICAL: reset clears histograms/ntuples from previous run
-                // without this it crashes on run 2
-                analysisManager->Reset();
-                analysisManager->SetDefaultFileType("root");
-                analysisManager->SetVerboseLevel(0);
+                // Reset stepping action counters
+                steppingAction->Reset(runID);
 
-                analysisManager->CreateH1(
-                    "ScatteringAngle_Full",
-                    "Scattering Angle (Full);Theta (deg);Counts",
-                    180, 0, 180);
+                // Analysis manager reset
+                auto am = G4AnalysisManager::Instance();
+                am->Reset();
+                am->SetDefaultFileType("root");
+                am->SetVerboseLevel(0);
 
-                analysisManager->CreateH1(
-                    "ScatteringAngle",
-                    "Scattering Angle;Theta (deg);Probability",
-                    200, 0, 60);
+                am->CreateH1("ScatteringAngle_Full",
+                             "Scattering Angle (Full);Theta (deg);Counts",
+                             180, 0, 180);
+                am->CreateH1("ScatteringAngle",
+                             "Scattering Angle;Theta (deg);Probability",
+                             200, 0, 60);
+                am->CreateNtuple("scattering", "Scattering Data");
+                am->CreateNtupleDColumn("theta");
+                am->CreateNtupleDColumn("energy");
+                am->CreateNtupleIColumn("run_id");
+                am->FinishNtuple();
+                am->OpenFile(outputFile);
 
-                // Ntuple: theta, energy, run_id
-                analysisManager->CreateNtuple("scattering", "Scattering Data");
-                analysisManager->CreateNtupleDColumn("theta");
-                analysisManager->CreateNtupleDColumn("energy");
-                analysisManager->CreateNtupleIColumn("run_id");
-                analysisManager->FinishNtuple();
-
-                analysisManager->OpenFile(outputFile);
-
-                // ==============================
-                // Run Manager
-                // ==============================
-
-                auto runManager = new G4RunManager();
-                runManager->SetVerboseLevel(0); // suppress per-run Geant4 spam
-
-                runManager->SetUserInitialization(
-                    new DetectorConstruction(targetThickness));
-
-                runManager->SetUserInitialization(
-                    new PhysicsList());
-
-                runManager->SetUserAction(
-                    new PrimaryGenerator(particle, energyMeV * MeV));
-
-                G4double thresholdRad = thresholdDeg * deg;
-                auto steppingAction = new SteppingAction(thresholdRad, runID);
-                runManager->SetUserAction(steppingAction);
-
-                runManager->Initialize();
                 runManager->BeamOn(nEvents);
 
-                // ==============================
-                // Results
-                // ==============================
-
-                G4int largeCount = steppingAction->GetLargeAngleCount();
-                G4double largeAngleProb = (double)largeCount / nEvents;
+                G4double largeAngleProb =
+                    (double)steppingAction->GetLargeAngleCount() / nEvents;
 
                 std::cout << "Large angle prob (>" << thresholdDeg << " deg): "
                           << largeAngleProb << "\n";
 
-                // Scale histograms to probability
-                analysisManager->ScaleH1(0, 1.0 / nEvents);
-                analysisManager->ScaleH1(1, 1.0 / nEvents);
+                am->ScaleH1(0, 1.0 / nEvents);
+                am->ScaleH1(1, 1.0 / nEvents);
+                am->Write();
+                am->CloseFile();
 
-                analysisManager->Write();
-                analysisManager->CloseFile();
-
-                // Log to CSV
-                csvLog << runID << ","
-                       << particle << ","
-                       << energyMeV << ","
-                       << tFrac << ","
+                csvLog << runID << "," << particle << ","
+                       << energyMeV << "," << tFrac << ","
                        << targetThickness / mm << ","
-                       << largeAngleProb << ","
-                       << outputFile << "\n";
-                csvLog.flush(); // write immediately — if batch crashes, progress is saved
+                       << largeAngleProb << "," << outputFile << "\n";
+                csvLog.flush();
 
-                delete runManager;
                 runID++;
             }
         }
     }
 
     csvLog.close();
+    delete runManager;
 
     std::cout << "\n========================================\n";
     std::cout << "BATCH COMPLETE. Total runs: " << runID << "\n";
-    std::cout << "Parameter log saved to params.csv\n";
+    std::cout << "Parameter log: params.csv\n";
     std::cout << "========================================\n";
 
     return 0;

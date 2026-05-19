@@ -19,23 +19,24 @@ G4int SteppingAction::GetLargeAngleCount() const {
     return fLargeAngleCount;
 }
 
+void SteppingAction::Reset(G4int newRunID) {
+    fLargeAngleCount = 0;
+    fRunID           = newRunID;
+}
+
 void SteppingAction::UserSteppingAction(const G4Step* step)
 {
     auto track = step->GetTrack();
-
-    // Only primary particle
     if (track->GetTrackID() != 1) return;
 
     auto pre  = step->GetPreStepPoint();
     auto post = step->GetPostStepPoint();
-
     if (!pre || !post) return;
 
     if (pre->GetPhysicalVolume()->GetName() == "TargetPhys" &&
         (post->GetPhysicalVolume() == nullptr ||
          post->GetPhysicalVolume()->GetName() != "TargetPhys"))
     {
-        // Scattering angle relative to beam direction
         G4ThreeVector beamDir(0, 0, 1);
         auto p_out = post->GetMomentumDirection();
 
@@ -43,23 +44,18 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
         if (cosTheta >  1.0) cosTheta =  1.0;
         if (cosTheta < -1.0) cosTheta = -1.0;
 
-        double thetaRad = std::acos(cosTheta);
-        double thetaDeg = thetaRad / CLHEP::deg;
+        double thetaRad  = std::acos(cosTheta);
+        double thetaDeg  = thetaRad / CLHEP::deg;
         double energyMeV = post->GetKineticEnergy() / CLHEP::MeV;
 
-        auto analysisManager = G4AnalysisManager::Instance();
+        auto am = G4AnalysisManager::Instance();
+        am->FillH1(0, thetaDeg);
+        am->FillH1(1, thetaDeg);
+        am->FillNtupleDColumn(0, thetaDeg);
+        am->FillNtupleDColumn(1, energyMeV);
+        am->FillNtupleIColumn(2, fRunID);
+        am->AddNtupleRow();
 
-        // Fill histograms
-        analysisManager->FillH1(0, thetaDeg);
-        analysisManager->FillH1(1, thetaDeg);
-
-        // Fill ntuple: theta, energy, run_id
-        analysisManager->FillNtupleDColumn(0, thetaDeg);
-        analysisManager->FillNtupleDColumn(1, energyMeV);
-        analysisManager->FillNtupleIColumn(2, fRunID);
-        analysisManager->AddNtupleRow();
-
-        // Large angle counting
         if (thetaRad > fAngleThreshold)
             fLargeAngleCount++;
     }
