@@ -3,13 +3,14 @@
  *
  * Grid design:
  *   Particles  : e-, mu-
- *   Energies   : 15 log-spaced points, 100–5000 MeV
- *   Thicknesses: 10 log-spaced points, 0.01–0.50 X0
- *   Total runs : 15 × 10 × 2 = 300
+ *   Energies   : 20 log-spaced points, 100–5000 MeV
+ *   Thicknesses: 12 log-spaced points, 0.01–0.50 X0
+ *   Total runs : 20 × 12 × 2 = 480
  *   Events/run : 10,000
  *
  * Fixes vs v1:
- *   - Grid is now truly log-spaced on both axes (was uneven, especially thickness)
+ *   - Grid is truly log-spaced on both axes (was uneven, especially thickness)
+ *   - Increased grid density to 480 runs for better coverage
  *   - Filename encodes thickness as fraction string (e.g. "0.0100X0") not percent
  *     → extract_features.py can parse it unambiguously without dividing by 100
  *   - large_angle_prob threshold is 5 deg consistently in both C++ and Python
@@ -43,6 +44,23 @@
 
 using namespace CLHEP;
 
+std::vector<G4double> logSpace(G4double min, G4double max, int count)
+{
+    std::vector<G4double> values;
+    values.reserve(count);
+
+    const G4double logMin = std::log10(min);
+    const G4double logMax = std::log10(max);
+    const G4double step   = (logMax - logMin) / static_cast<G4double>(count - 1);
+
+    for (int i = 0; i < count; ++i)
+    {
+        values.push_back(std::pow(10.0, logMin + step * i));
+    }
+
+    return values;
+}
+
 int main()
 {
     // ══════════════════════════════════════════════════════════════════
@@ -51,18 +69,15 @@ int main()
 
     std::vector<std::string> particles = {"e-", "mu-"};
 
-    // 15 log-spaced energies: 100 → 5000 MeV
-    std::vector<G4double> energies = {
-        100, 132, 175, 231, 306, 404, 535, 707,
-        935, 1237, 1635, 2162, 2859, 3781, 5000
-    };
+    const int energyPoints    = 20;
+    const int thicknessPoints = 12;
 
-    // 10 log-spaced thicknesses: 0.01 → 0.50 X0 (fraction of radiation length)
-    std::vector<G4double> thicknessFractions = {
-        0.010000, 0.015445, 0.023853, 0.036840,
-        0.056898, 0.087876, 0.135721, 0.209614,
-        0.323739, 0.500000
-    };
+    // 20 log-spaced energies: 100 → 5000 MeV
+    std::vector<G4double> energies = logSpace(100.0, 5000.0, energyPoints);
+
+    // 12 log-spaced thicknesses: 0.01 → 0.50 X0 (fraction of radiation length)
+    std::vector<G4double> thicknessFractions =
+        logSpace(0.01, 0.50, thicknessPoints);
 
     // ══════════════════════════════════════════════════════════════════
     // Run settings
@@ -115,8 +130,9 @@ int main()
 
     for (const auto& particle : particles)
     {
-        for (G4double energyMeV : energies)
+        for (G4double energyMeVExact : energies)
         {
+            const G4double energyMeV = std::round(energyMeVExact);
             for (G4double tFrac : thicknessFractions)
             {
                 G4double targetThickness = tFrac * X0_Al;
