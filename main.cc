@@ -138,11 +138,11 @@ int main()
                 G4double targetThickness = tFrac * X0_Al;
 
                 // ── Build output filename ─────────────────────────────
-                // Format: output_em_100MeV_t1000X0.root
+                // Base format (no extension): output_em_100MeV_t1000X0
                 // thickness encoded as integer = round(tFrac * 100000)
                 // e.g. 0.01 -> t1000,  0.5 -> t50000
-                // NO dots in filename: ROOT splits on last dot to detect
-                // file type; a second dot causes silent write failure.
+                // G4AnalysisManager appends ".root" automatically for ROOT.
+                // Keep the base name free of dots to avoid silent failures.
                 // extract_features.py recovers: tFrac = tCode / 100000.0
                 std::string ptag = (particle == "e-") ? "em" : "mu";
                 int eMeV  = static_cast<int>(energyMeV);
@@ -151,8 +151,9 @@ int main()
                 std::ostringstream fname;
                 fname << "output_" << ptag << "_"
                       << eMeV << "MeV_"
-                      << "t" << tCode << "X0.root";
-                std::string outputFile = fname.str();
+                      << "t" << tCode << "X0";
+                std::string outputBase = fname.str();
+                std::string outputFile = outputBase + ".root";
 
                 std::cout << "\n========================================\n"
                           << "RUN "     << runID
@@ -194,7 +195,16 @@ int main()
                 am->CreateNtupleDColumn("energy");     // col 1: MeV
                 am->CreateNtupleIColumn("run_id");     // col 2: integer
                 am->FinishNtuple();
-                am->OpenFile(outputFile);
+                if (!am->OpenFile(outputBase))
+                {
+                    std::cerr << "ERROR: Failed to open ROOT file: "
+                              << outputFile << "\n"
+                              << "Check that Geant4 was built with ROOT support "
+                              << "and the output directory is writable.\n";
+                    csvLog.close();
+                    delete runManager;
+                    return 1;
+                }
 
                 // ── Run ───────────────────────────────────────────────
                 runManager->BeamOn(nEvents);
