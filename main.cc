@@ -44,7 +44,7 @@
 
 using namespace CLHEP;
 
-std::vector<G4double> LogSpace(G4double min, G4double max, int count)
+std::vector<G4double> logSpace(G4double min, G4double max, int count)
 {
     std::vector<G4double> values;
     values.reserve(count);
@@ -73,11 +73,11 @@ int main()
     const int thicknessPoints = 12;
 
     // 20 log-spaced energies: 100 → 5000 MeV
-    std::vector<G4double> energies = LogSpace(100.0, 5000.0, energyPoints);
+    std::vector<G4double> energies = logSpace(100.0, 5000.0, energyPoints);
 
     // 12 log-spaced thicknesses: 0.01 → 0.50 X0 (fraction of radiation length)
     std::vector<G4double> thicknessFractions =
-        LogSpace(0.01, 0.50, thicknessPoints);
+        logSpace(0.01, 0.50, thicknessPoints);
 
     // ══════════════════════════════════════════════════════════════════
     // Run settings
@@ -130,9 +130,9 @@ int main()
 
     for (const auto& particle : particles)
     {
-        for (G4double energyMeVRaw : energies)
+        for (G4double energyMeVExact : energies)
         {
-            const G4double energyMeV = std::round(energyMeVRaw);
+            const G4double energyMeV = std::round(energyMeVExact);
             for (G4double tFrac : thicknessFractions)
             {
                 G4double targetThickness = tFrac * X0_Al;
