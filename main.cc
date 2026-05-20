@@ -197,8 +197,8 @@ int main()
                 am->FinishNtuple();
                 if (!am->OpenFile(outputBase))
                 {
-                    std::cerr << "ERROR: Failed to open ROOT file: "
-                              << outputFile << "\n"
+                    std::cerr << "ERROR: Failed to open ROOT file base: "
+                              << outputBase << " (.root will be appended)\n"
                               << "Check that Geant4 was built with ROOT support "
                               << "and the output directory is writable.\n";
                     csvLog.close();
