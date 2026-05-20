@@ -1,5 +1,5 @@
 #!/bin/bash
-# run_script.sh — convenience wrapper for run_batch.sh
+# run_script.sh - convenience wrapper for run_batch.sh
 # Usage: bash run_script.sh
 
 set -e
