@@ -34,9 +34,22 @@ echo "[2/3] Running batch simulation..."
 cd "$OUTPUT_DIR"
 "$BUILD_DIR/scattering"
 
-# Move CSV log to output dir (it's generated in cwd)
-echo "[3/3] Done. Output files:"
-ls -lh "$OUTPUT_DIR"/*.root 2>/dev/null | wc -l | xargs -I{} echo "      {} ROOT files generated"
+# Verify outputs
+echo "[3/3] Verifying outputs..."
+shopt -s nullglob
+root_files=("$OUTPUT_DIR"/output_*.root)
+root_count="${#root_files[@]}"
+if [[ "$root_count" -eq 0 ]]; then
+  echo "ERROR: No ROOT files were generated in $OUTPUT_DIR."
+  echo "Check Geant4 setup and run logs in $BUILD_DIR/cmake.log and $BUILD_DIR/make.log."
+  exit 1
+fi
+
+echo "      $root_count ROOT files generated"
+if [[ ! -f "$OUTPUT_DIR/params.csv" ]]; then
+  echo "ERROR: params.csv was not generated in $OUTPUT_DIR."
+  exit 1
+fi
 echo "      Parameter log: $OUTPUT_DIR/params.csv"
 echo ""
 echo "========================================"
